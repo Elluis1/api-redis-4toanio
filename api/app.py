@@ -9,6 +9,8 @@ r = redis.Redis(host='localhost',
 # capítulos de todas las temporadas de The Mandalorian, los cuales podrán ser
 # alquilados para ver por una persona al mismo tiempo.
 
+balance = 15000
+
 episodes = {
     "S01": [
         "Chapter 1: The Mandalorian",
@@ -88,46 +90,42 @@ def payment_check():
         else:
             print(f"{key} is already rented.")
 
-
-# for season, chapters in episodes.items():
-#     for chapter in chapters:
-#         key = f"mandalorian:{season}:{chapter}"
-#         r.set(key, "available")
-#         print(f"Added {key} to Redis with value 'available'.")
-
-# Punto 1
-# view_episodes()
-
-# Punto 2
-# rent_episode()
-
-# Punto 3
-# payment_check()
-
 # Función para obtener los episodios desde Redis
 def get_episodes():
     episodes = {}
-    keys = r.keys("mandalorian:S*")
+    keys = r.keys("mandalorian:S*:*")
+    
     for key in keys:
         parts = key.split(":")
         season, chapter = parts[1], parts[2]
+        
         if season not in episodes:
             episodes[season] = []
-        episodes[season].append(chapter)
+        
+        # Obtener el estado del capítulo desde Redis
+        status = r.get(key) or "unknown"
+
+        # Asegurar que no se repita "Chapter"
+        if not chapter.startswith("Chapter"):
+            chapter = f"Chapter {chapter}"
+
+        episodes[season].append(f"{chapter} {status}")
+    
     return episodes
+
 
 # Función para mostrar los episodios disponibles
 def show_episodes():
     season = season_var.get()
     listbox.delete(0, tk.END)
-    episodes = get_episodes()
-    if season in episodes:
-        for chapter in episodes[season]:
-            key = f"mandalorian:{season}:{chapter}"
-            status = r.get(key)
-            listbox.insert(tk.END, f"{chapter} {status}")
-    else:
-        messagebox.showerror("Error", "Invalid season selection")
+    
+    keys = r.keys(f"mandalorian:{season}:*")
+    for key in keys:
+        chapter_number = key.split(":")[-1]
+        status = r.get(key)
+        status = status if status else "available"  # Si no existe, es disponible
+        listbox.insert(tk.END, f"Chapter {chapter_number} - {status}")
+
         
 # Función para alquilar un episodio
 def rent_episode():
@@ -137,15 +135,17 @@ def rent_episode():
         return
     
     season = season_var.get()
-    chapter = selected.split(" (")[0]
-    key = f"mandalorian:{season}:{chapter}"
+    chapter_number = selected.split(" - ")[0].split(" ")[1]
+    key = f"mandalorian:{season}:{chapter_number}"
     
-    if r.get(key) == "available":
+    status = r.get(key)
+    if status and status == "available":
         r.setex(key, 240, "reserved")
-        messagebox.showinfo("Success", f"{chapter} is now reserved for 4 minutes")
+        messagebox.showinfo("Success", f"Chapter {chapter_number} is now reserved for 4 minutes")
         show_episodes()
     else:
         messagebox.showerror("Error", "Episode is already rented or reserved")
+
 
 # Función para confirmar el pago
 def confirm_payment():
@@ -156,15 +156,15 @@ def confirm_payment():
         return
     
     season = season_var.get()
-    chapter = selected.split(" (")[0]
-    key = f"mandalorian:{season}:{chapter}"
+    chapter_number = selected.split(" - ")[0].split(" ")[1]
+    key = f"mandalorian:{season}:{chapter_number}"
     
     if r.get(key) == "reserved":
         price = {"S01": 1000, "S02": 1500, "S03": 2000}.get(season, 0)
         if balance >= price:
             balance -= price
             r.set(key, "rented")
-            messagebox.showinfo("Payment Success", f"{chapter} rented successfully! New balance: {balance} pesos")
+            messagebox.showinfo("Payment Success", f"{chapter_number} rented successfully! New balance: {balance} pesos")
             show_episodes()
         else:
             messagebox.showerror("Error", "Insufficient balance")
@@ -188,9 +188,31 @@ listbox.pack()
 tk.Button(root, text="Rent Episode", command=rent_episode).pack()
 tk.Button(root, text="Confirm Payment", command=confirm_payment).pack()
 
-balance = 15000
 tk.Label(root, text=f"Balance: {balance} pesos").pack()
 
 show_episodes()
 
 root.mainloop()
+
+# keys = r.keys("mandalorian:S*")  
+# if keys:
+#     r.delete(*keys)  # Borra todas las claves encontradas
+#     print(f"Deleted {len(keys)} keys from Redis.")
+    
+# Subir capítulos a Redis con claves consistentes
+# for season, chapters in episodes.items():
+#     for chapter in chapters:
+#         chapter_number = chapter.split(":")[0].replace("Chapter ", "")  
+#         key = f"mandalorian:{season}:{chapter_number}"
+#         r.set(key, "available")
+#         print(f"Added {key} to Redis with value 'available'.")
+
+
+# Punto 1
+# view_episodes()
+
+# Punto 2
+# rent_episode()
+
+# Punto 3
+# payment_check()
