@@ -44,6 +44,18 @@ episodes = {
     ]
 }
 
+# Ejecutar una vez para inicializar episodios en Redis
+if not r.exists("mandalorian:episodes"):
+    for season, chapters in episodes.items():
+        for chapter in chapters:
+            chapter_number = chapter.split(":")[0].replace("Chapter ", "")
+            r.sadd("mandalorian:episodes", f"{season}:{chapter_number}")
+            key = f"mandalorian:{season}:{chapter_number}"
+            if not r.exists(key):
+                r.set(key, "available")
+    print("Episodios cargados en Redis")
+
+
 def view_episodes():
     season = input("Enter the season (S01, S02, S03): ")
     if season in episodes:
@@ -102,10 +114,8 @@ def get_episodes():
         if season not in episodes:
             episodes[season] = []
         
-        # Obtener el estado del capítulo desde Redis
         status = r.get(key) or "unknown"
 
-        # Asegurar que no se repita "Chapter"
         if not chapter.startswith("Chapter"):
             chapter = f"Chapter {chapter}"
 
@@ -123,10 +133,14 @@ def show_episodes():
     for key in keys:
         chapter_number = key.split(":")[-1]
         status = r.get(key)
-        status = status if status else "available"  # Si no existe, es disponible
-        listbox.insert(tk.END, f"Chapter {chapter_number} - {status}")
+        if status:
+            status = status.decode()
+            if status not in valid_states:
+                r.set(key, "available")
+        else:
+            r.set(key, "available")
 
-        
+
 # Función para alquilar un episodio
 def rent_episode():
     selected = listbox.get(tk.ACTIVE)
@@ -136,7 +150,7 @@ def rent_episode():
     
     season = season_var.get()
     chapter_number = selected.split(" - ")[0].split(" ")[1]
-    key = f"mandalorian:{season}:{chapter_number}"
+    key = f"mandalorian:{season}:{chapter_number}" 
     
     status = r.get(key)
     if status and status == "available":
@@ -194,15 +208,15 @@ show_episodes()
 
 root.mainloop()
 
-# keys = r.keys("mandalorian:S*")  
+# keys = r.keys("mandalorian:S*")
 # if keys:
-#     r.delete(*keys)  # Borra todas las claves encontradas
+#     r.delete(*keys)
 #     print(f"Deleted {len(keys)} keys from Redis.")
     
-# Subir capítulos a Redis con claves consistentes
+
 # for season, chapters in episodes.items():
 #     for chapter in chapters:
-#         chapter_number = chapter.split(":")[0].replace("Chapter ", "")  
+#         chapter_number = chapter.split(":")[0].replace("Chapter ", "")
 #         key = f"mandalorian:{season}:{chapter_number}"
 #         r.set(key, "available")
 #         print(f"Added {key} to Redis with value 'available'.")
