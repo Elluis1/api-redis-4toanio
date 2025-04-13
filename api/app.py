@@ -128,10 +128,23 @@ def get_episodes():
 def show_episodes():
     season = season_var.get()
     listbox.delete(0, tk.END)
-    
-    keys = r.keys(f"mandalorian:{season}:*")
+
+    episodes_keys = r.smembers("mandalorian:episodes")
+    episodes_list = [ep.decode() if isinstance(ep, bytes) else ep for ep in episodes_keys]
+
+    for ep in sorted(episodes_list):
+        ep_season, chapter_number = ep.split(":")
+        if ep_season == season:
+            key = f"mandalorian:{ep_season}:{chapter_number}"
+            status = r.get(key)
+            status = status if status else "available"
+            listbox.insert(tk.END, f"Chapter {chapter_number} - {status}")
+
+def sanitize_episode_states():
+    keys = r.keys("mandalorian:*")
+    valid_states = {"available", "reserved", "rented"}
+
     for key in keys:
-        chapter_number = key.split(":")[-1]
         status = r.get(key)
         if status:
             status = status.decode()
@@ -204,10 +217,6 @@ tk.Button(root, text="Confirm Payment", command=confirm_payment).pack()
 
 tk.Label(root, text=f"Balance: {balance} pesos").pack()
 
-show_episodes()
-
-root.mainloop()
-
 # keys = r.keys("mandalorian:S*")
 # if keys:
 #     r.delete(*keys)
@@ -230,3 +239,7 @@ root.mainloop()
 
 # Punto 3
 # payment_check()
+
+# Punto 4
+show_episodes()
+root.mainloop()
